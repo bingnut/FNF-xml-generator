@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Simple Sprite Sheet Packer</title>
+
 <style>
   body {
     font-family: Arial, sans-serif;
@@ -11,23 +12,15 @@
     background: #f5f5f5;
     color: #222;
   }
-  h1 {
-    margin-bottom: 20px;
-  }
   .box {
     background: white;
     border: 1px solid #ccc;
     padding: 15px;
     margin-bottom: 20px;
   }
-  input, button {
-    margin: 5px 0;
-    padding: 8px;
-  }
-  button {
-    cursor: pointer;
-  }
-  #previewCanvas {
+  input, button { margin: 5px 0; padding: 8px; }
+  button { cursor: pointer; }
+  canvas {
     border: 1px solid #ccc;
     max-width: 100%;
     image-rendering: pixelated;
@@ -36,25 +29,34 @@
     background: #eee;
     padding: 10px;
     white-space: pre-wrap;
-    overflow-x: auto;
     max-height: 200px;
-  }
-  ul {
-    padding-left: 20px;
+    overflow: auto;
   }
 </style>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 </head>
+
 <body>
+
 <h1>Sprite Sheet Packer</h1>
+
 <div class="box">
   <input type="file" id="fileInput" multiple accept="image/*">
-  <br>
+  <br><br>
+
+  <!-- NEW: XML loader -->
+  <label>Load XML</label><br>
+  <input type="file" id="xmlInput" accept=".xml">
+  <br><br>
+
   <label>Sheet Name</label><br>
   <input type="text" id="sheetName" value="spritesheet">
+
   <br>
   <label>Padding</label><br>
   <input type="number" id="padding" value="2">
+
   <br><br>
   <button id="packBtn">Pack Sprite Sheet</button>
   <button id="downloadPngBtn" disabled>Download PNG</button>
@@ -62,43 +64,46 @@
   <button id="downloadBothBtn" disabled>Download ZIP</button>
   <button id="clearBtn">Clear</button>
 </div>
+
 <div class="box">
   <h3>Images</h3>
   <ul id="imageList"></ul>
 </div>
+
 <div class="box">
   <h3>Preview</h3>
   <canvas id="previewCanvas"></canvas>
 </div>
+
 <div class="box">
   <h3>XML</h3>
   <pre id="xmlPreview"></pre>
 </div>
+
 <script>
 const fileInput = document.getElementById('fileInput');
+const xmlInput = document.getElementById('xmlInput');
 const imageList = document.getElementById('imageList');
 const previewCanvas = document.getElementById('previewCanvas');
 const xmlPreview = document.getElementById('xmlPreview');
-const packBtn = document.getElementById('packBtn');
-const downloadPngBtn = document.getElementById('downloadPngBtn');
-const downloadXmlBtn = document.getElementById('downloadXmlBtn');
-const downloadBothBtn = document.getElementById('downloadBothBtn');
-const clearBtn = document.getElementById('clearBtn');
+
 let frames = [];
-let packedXml = '';
-fileInput.addEventListener('change', (e) => {
-  loadFiles(e.target.files);
-});
+let packedXml = "";
+
+/* ---------------- LOAD IMAGES ---------------- */
+fileInput.addEventListener('change', e => loadFiles(e.target.files));
+
 function loadFiles(files) {
   Array.from(files).forEach(file => {
     if (!file.type.startsWith('image/')) return;
+
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = e => {
       const img = new Image();
       img.onload = () => {
         frames.push({
           name: file.name.replace(/\.[^.]+$/, ''),
-          img: img,
+          img,
           width: img.width,
           height: img.height
         });
@@ -109,123 +114,136 @@ function loadFiles(files) {
     reader.readAsDataURL(file);
   });
 }
+
+/* ---------------- LOAD XML (NEW) ---------------- */
+xmlInput.addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const parser = new DOMParser();
+    const xml = parser.parseFromString(ev.target.result, "text/xml");
+
+    const nodes = xml.getElementsByTagName("SubTexture");
+
+    frames = [];
+
+    for (let node of nodes) {
+      frames.push({
+        name: node.getAttribute("name"),
+        x: parseInt(node.getAttribute("x")),
+        y: parseInt(node.getAttribute("y")),
+        width: parseInt(node.getAttribute("width")),
+        height: parseInt(node.getAttribute("height")),
+        img: null // image not included in XML
+      });
+    }
+
+    updateList();
+    alert("XML loaded! (Images not restored, only layout data)");
+  };
+
+  reader.readAsText(file);
+});
+
+/* ---------------- UI LIST ---------------- */
 function updateList() {
   imageList.innerHTML = '';
-  frames.forEach((frame, index) => {
+
+  frames.forEach((f, i) => {
     const li = document.createElement('li');
-    const text = document.createElement('span');
-    text.textContent = frame.name + ' ';
-    const removeBtn = document.createElement('button');
-    removeBtn.textContent = 'Remove';
-    removeBtn.onclick = () => {
-      frames.splice(index, 1);
+    li.textContent =
+      f.name +
+      (f.img ? " (image)" : " (xml-only)");
+
+    const btn = document.createElement('button');
+    btn.textContent = "Remove";
+    btn.onclick = () => {
+      frames.splice(i, 1);
       updateList();
     };
-    li.appendChild(text);
-    li.appendChild(removeBtn);
+
+    li.appendChild(btn);
     imageList.appendChild(li);
   });
 }
-packBtn.addEventListener('click', pack);
-function pack() {
-  if (frames.length === 0) return;
-  const padding =
-    parseInt(document.getElementById('padding').value) || 0;
-  const sheetName =
-    document.getElementById('sheetName').value || 'spritesheet';
+
+/* ---------------- PACK ---------------- */
+document.getElementById('packBtn').onclick = () => {
+  if (!frames.length) return;
+
+  const padding = +document.getElementById('padding').value || 0;
+  const sheetName = document.getElementById('sheetName').value || "spritesheet";
+
   const cols = Math.ceil(Math.sqrt(frames.length));
+  const cellW = Math.max(...frames.map(f => f.width));
+  const cellH = Math.max(...frames.map(f => f.height));
+
+  const w = cols * (cellW + padding) + padding;
   const rows = Math.ceil(frames.length / cols);
-  const cellWidth =
-    Math.max(...frames.map(f => f.width));
-  const cellHeight =
-    Math.max(...frames.map(f => f.height));
-  const sheetWidth =
-    cols * (cellWidth + padding) + padding;
-  const sheetHeight =
-    rows * (cellHeight + padding) + padding;
-  previewCanvas.width = sheetWidth;
-  previewCanvas.height = sheetHeight;
-  const ctx = previewCanvas.getContext('2d');
-  ctx.clearRect(0, 0, sheetWidth, sheetHeight);
-  const xml = [
-    `<TextureAtlas imagePath="${sheetName}.png">`
-  ];
-  frames.forEach((frame, index) => {
-    const col = index % cols;
-    const row = Math.floor(index / cols);
-    const x =
-      padding + col * (cellWidth + padding);
-    const y =
-      padding + row * (cellHeight + padding);
-    ctx.drawImage(frame.img, x, y);
+  const h = rows * (cellH + padding) + padding;
+
+  previewCanvas.width = w;
+  previewCanvas.height = h;
+
+  const ctx = previewCanvas.getContext("2d");
+  ctx.clearRect(0,0,w,h);
+
+  const xml = [`<TextureAtlas imagePath="${sheetName}.png">`];
+
+  frames.forEach((f, i) => {
+    const x = padding + (i % cols) * (cellW + padding);
+    const y = padding + Math.floor(i / cols) * (cellH + padding);
+
+    if (f.img) ctx.drawImage(f.img, x, y);
+
     xml.push(
-      `  <SubTexture name="${frame.name}" x="${x}" y="${y}" width="${frame.width}" height="${frame.height}"/>`
+      `<SubTexture name="${f.name}" x="${x}" y="${y}" width="${f.width}" height="${f.height}"/>`
     );
   });
-  xml.push(`</TextureAtlas>`);
-  packedXml = xml.join('\n');
+
+  xml.push("</TextureAtlas>");
+
+  packedXml = xml.join("\n");
   xmlPreview.textContent = packedXml;
-  downloadPngBtn.disabled = false;
-  downloadXmlBtn.disabled = false;
-  downloadBothBtn.disabled = false;
-}
-downloadPngBtn.addEventListener('click', () => {
-  const sheetName =
-    document.getElementById('sheetName').value || 'spritesheet';
-  const a = document.createElement('a');
-  a.download = sheetName + '.png';
-  a.href = previewCanvas.toDataURL('image/png');
+
+  document.getElementById('downloadPngBtn').disabled = false;
+  document.getElementById('downloadXmlBtn').disabled = false;
+  document.getElementById('downloadBothBtn').disabled = false;
+};
+
+/* ---------------- DOWNLOADS ---------------- */
+document.getElementById('downloadPngBtn').onclick = () => {
+  const name = document.getElementById('sheetName').value || "spritesheet";
+  const a = document.createElement("a");
+  a.download = name + ".png";
+  a.href = previewCanvas.toDataURL();
   a.click();
-});
-downloadXmlBtn.addEventListener('click', () => {
-  const sheetName =
-    document.getElementById('sheetName').value || 'spritesheet';
-  const blob =
-    new Blob([packedXml], { type: 'text/xml' });
-  const a = document.createElement('a');
-  a.download = sheetName + '.xml';
+};
+
+document.getElementById('downloadXmlBtn').onclick = () => {
+  const name = document.getElementById('sheetName').value || "spritesheet";
+  const blob = new Blob([packedXml], { type: "text/xml" });
+
+  const a = document.createElement("a");
+  a.download = name + ".xml";
   a.href = URL.createObjectURL(blob);
   a.click();
-});
-downloadBothBtn.addEventListener('click', async () => {
-  const sheetName =
-    document.getElementById('sheetName').value || 'spritesheet';
-  const zip = new JSZip();
-  const pngData =
-    previewCanvas.toDataURL('image/png').split(',')[1];
-  zip.file(
-    sheetName + '.png',
-    pngData,
-    { base64: true }
-  );
-  zip.file(
-    sheetName + '.xml',
-    packedXml
-  );
-  const content =
-    await zip.generateAsync({ type: 'blob' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(content);
-  a.download = sheetName + '.zip';
-  a.click();
-});
-clearBtn.addEventListener('click', () => {
+};
+
+/* ---------------- CLEAR ---------------- */
+document.getElementById('clearBtn').onclick = () => {
   frames = [];
-  packedXml = '';
+  packedXml = "";
   updateList();
-  const ctx = previewCanvas.getContext('2d');
-  ctx.clearRect(
-    0,
-    0,
-    previewCanvas.width,
-    previewCanvas.height
-  );
-  xmlPreview.textContent = '';
-  downloadPngBtn.disabled = true;
-  downloadXmlBtn.disabled = true;
-  downloadBothBtn.disabled = true;
-  fileInput.value = '';
-});
+  xmlPreview.textContent = "";
+  previewCanvas.getContext("2d").clearRect(0,0,previewCanvas.width,previewCanvas.height);
+
+  fileInput.value = "";
+  xmlInput.value = "";
+};
 </script>
+
 </body>
 </html>
