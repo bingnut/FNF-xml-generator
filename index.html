@@ -3,76 +3,159 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Simple Sprite Sheet Packer</title>
-
+<title>Sprite Sheet Packer</title>
 <style>
-  body {
-    font-family: Arial, sans-serif;
-    margin: 20px;
-    background: #f5f5f5;
-    color: #222;
+  *, *::before, *::after { box-sizing: border-box; }
+  body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #f5f5f5; color: #222; }
+  h1 { margin: 0 0 16px; font-size: 22px; }
+  .box { background: white; border: 1px solid #ccc; border-radius: 8px; padding: 15px; margin-bottom: 16px; }
+  .box h3 { margin: 0 0 10px; font-size: 15px; }
+  label { font-size: 13px; color: #555; display: block; margin-bottom: 2px; }
+  input[type=file], input[type=text], input[type=number] {
+    width: 100%; padding: 6px 8px; font-size: 13px;
+    border: 1px solid #ccc; border-radius: 4px; margin-bottom: 10px;
   }
-  .box {
-    background: white;
-    border: 1px solid #ccc;
-    padding: 15px;
-    margin-bottom: 20px;
+  .row { display: flex; gap: 12px; flex-wrap: wrap; }
+  .row > div { flex: 1; min-width: 140px; }
+  .btns { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; align-items: center; }
+  button {
+    font-size: 13px; padding: 6px 12px; cursor: pointer;
+    border: 1px solid #bbb; border-radius: 4px; background: #fff; color: #222;
   }
-  input, button { margin: 5px 0; padding: 8px; }
-  button { cursor: pointer; }
-  canvas {
-    border: 1px solid #ccc;
-    max-width: 100%;
-    image-rendering: pixelated;
+  button:hover:not(:disabled) { background: #f0f0f0; }
+  button:disabled { opacity: 0.4; cursor: default; }
+  #previewWrap { position: relative; display: inline-block; max-width: 100%; }
+  #previewCanvas {
+    display: block; border: 1px solid #ccc; border-radius: 4px;
+    image-rendering: pixelated; max-width: 100%; background: #e0e0e0;
+  }
+  #overlayCanvas {
+    position: absolute; top: 0; left: 0;
+    pointer-events: none; image-rendering: pixelated; max-width: 100%;
   }
   #xmlPreview {
-    background: #eee;
-    padding: 10px;
-    white-space: pre-wrap;
-    max-height: 200px;
-    overflow: auto;
+    background: #f4f4f4; border: 1px solid #ddd; border-radius: 4px;
+    padding: 10px; white-space: pre-wrap; max-height: 200px;
+    overflow: auto; font-family: monospace; font-size: 12px;
   }
+  #imageList { margin: 0; padding: 0; list-style: none; font-size: 13px; }
+  #imageList li {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 4px 0; border-bottom: 1px solid #eee;
+  }
+  #imageList li:last-child { border-bottom: none; }
+  #imageList button { padding: 2px 8px; font-size: 12px; }
+  .legend { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 10px; font-size: 12px; color: #555; }
+  .legend-item { display: flex; align-items: center; gap: 5px; }
+  .legend-swatch { width: 14px; height: 14px; border-radius: 3px; border-width: 2px; border-style: solid; }
+  .dropdown-wrap { position: relative; display: inline-block; }
+  .dropdown-menu {
+    display: none; position: absolute; top: 100%; left: 0; margin-top: 2px;
+    background: #fff; border: 1px solid #bbb; border-radius: 4px;
+    min-width: 210px; z-index: 100; box-shadow: 0 4px 12px rgba(0,0,0,0.12); overflow: hidden;
+  }
+  .dropdown-menu.open { display: block; }
+  .dropdown-menu button {
+    display: block; width: 100%; text-align: left; border: none; border-radius: 0;
+    padding: 8px 14px; font-size: 13px; background: #fff; color: #222;
+    border-bottom: 1px solid #eee; cursor: pointer;
+  }
+  .dropdown-menu button:last-child { border-bottom: none; }
+  .dropdown-menu button:hover:not(:disabled) { background: #f5f5f5; }
+  .dropdown-menu button:disabled { opacity: 0.4; cursor: default; }
+  .dropdown-toggle::after { content: " ▾"; font-size: 11px; }
+  /* XML batch list */
+  #batchList { margin: 8px 0 0; padding: 0; list-style: none; font-size: 13px; }
+  #batchList li {
+    display: flex; align-items: center; gap: 8px;
+    padding: 5px 0; border-bottom: 1px solid #eee;
+  }
+  #batchList li:last-child { border-bottom: none; }
+  .batch-name { flex: 1; font-weight: 500; }
+  .batch-count { color: #888; font-size: 12px; }
+  .batch-status { font-size: 12px; padding: 2px 7px; border-radius: 10px; }
+  .batch-status.ok { background: #e6f4ea; color: #1a7a38; }
+  .batch-status.missing { background: #fff3e0; color: #b45309; }
+  .batch-link-btn { font-size: 12px; padding: 2px 8px; }
+  .batch-remove-btn { font-size: 12px; padding: 2px 8px; }
+  /* modal overlay */
+  #modalOverlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.45); z-index: 200;
+    align-items: center; justify-content: center;
+  }
+  #modalOverlay.open { display: flex; }
+  #modal {
+    background: #fff; border-radius: 10px; padding: 20px 24px;
+    min-width: 300px; max-width: 90vw; box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+  }
+  #modal h3 { margin: 0 0 12px; font-size: 15px; }
+  #modal p { font-size: 13px; color: #555; margin: 0 0 12px; }
+  #modal .modal-btns { display: flex; gap: 8px; justify-content: flex-end; }
 </style>
-
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 </head>
-
 <body>
 
 <h1>Sprite Sheet Packer</h1>
 
 <div class="box">
-  <input type="file" id="fileInput" multiple accept="image/*">
-  <br><br>
+  <div class="row">
+    <div>
+      <label>Images (individual frames)</label>
+      <input type="file" id="fileInput" multiple accept="image/*">
+    </div>
+    <div>
+      <label>Load XML (replaces current)</label>
+      <input type="file" id="xmlInput" accept=".xml">
+    </div>
+  </div>
+  <div class="row">
+    <div>
+      <label>Sheet name</label>
+      <input type="text" id="sheetName" value="spritesheet">
+    </div>
+    <div>
+      <label>Padding (px)</label>
+      <input type="number" id="padding" value="2" min="0" max="32" style="width:100px">
+    </div>
+  </div>
+  <div class="btns">
+    <button id="packBtn">Pack</button>
+    <button id="addSpritesheetBtn" disabled>+ Add Spritesheet PNG</button>
+    <button id="mixXmlBtn">+ Mix XML</button>
+    <div class="dropdown-wrap">
+      <button class="dropdown-toggle" id="downloadToggle" disabled>Download</button>
+      <div class="dropdown-menu" id="downloadMenu">
+        <button id="downloadPngBtn">Spritesheet PNG</button>
+        <button id="downloadXmlBtn">XML only</button>
+        <button id="downloadBothBtn">Spritesheet + XML (ZIP)</button>
+        <button id="downloadFramesBtn">Separate frames (ZIP)</button>
+      </div>
+    </div>
+    <button id="clearBtn">Clear</button>
+  </div>
+  <input type="file" id="addSpritesheetImg" accept="image/*" style="display:none">
+  <input type="file" id="mixXmlFile" accept=".xml" multiple style="display:none">
+</div>
 
-  <!-- NEW: XML loader -->
-  <label>Load XML</label><br>
-  <input type="file" id="xmlInput" accept=".xml">
-  <br><br>
-
-  <label>Sheet Name</label><br>
-  <input type="text" id="sheetName" value="spritesheet">
-
-  <br>
-  <label>Padding</label><br>
-  <input type="number" id="padding" value="2">
-
-  <br><br>
-  <button id="packBtn">Pack Sprite Sheet</button>
-  <button id="downloadPngBtn" disabled>Download PNG</button>
-  <button id="downloadXmlBtn" disabled>Download XML</button>
-  <button id="downloadBothBtn" disabled>Download ZIP</button>
-  <button id="clearBtn">Clear</button>
+<!-- XML batches panel — only shown when there are mixed XMLs -->
+<div class="box" id="batchBox" style="display:none">
+  <h3>XML Batches</h3>
+  <ul id="batchList"></ul>
 </div>
 
 <div class="box">
-  <h3>Images</h3>
+  <h3>Frames (<span id="frameCount">0</span>)</h3>
   <ul id="imageList"></ul>
 </div>
 
 <div class="box">
   <h3>Preview</h3>
-  <canvas id="previewCanvas"></canvas>
+  <div id="previewWrap">
+    <canvas id="previewCanvas"></canvas>
+    <canvas id="overlayCanvas"></canvas>
+  </div>
+  <div id="legend" class="legend"></div>
 </div>
 
 <div class="box">
@@ -80,34 +163,71 @@
   <pre id="xmlPreview"></pre>
 </div>
 
-<script>
-const fileInput = document.getElementById('fileInput');
-const xmlInput = document.getElementById('xmlInput');
-const imageList = document.getElementById('imageList');
-const previewCanvas = document.getElementById('previewCanvas');
-const xmlPreview = document.getElementById('xmlPreview');
+<!-- modal for linking PNG to a mixed XML -->
+<div id="modalOverlay">
+  <div id="modal">
+    <h3 id="modalTitle">Link spritesheet PNG</h3>
+    <p id="modalDesc"></p>
+    <div class="modal-btns">
+      <button id="modalCancel">Cancel</button>
+      <button id="modalPick">Choose PNG…</button>
+    </div>
+  </div>
+</div>
+<input type="file" id="modalImgPicker" accept="image/*" style="display:none">
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+const fileInput       = document.getElementById('fileInput');
+const xmlInput        = document.getElementById('xmlInput');
+const imageList       = document.getElementById('imageList');
+const previewCanvas   = document.getElementById('previewCanvas');
+const overlayCanvas   = document.getElementById('overlayCanvas');
+const xmlPreview      = document.getElementById('xmlPreview');
+const legend          = document.getElementById('legend');
+const batchBox        = document.getElementById('batchBox');
+const batchList       = document.getElementById('batchList');
+
+// frames: { name, width, height, x, y, srcImg, srcX, srcY, batchId }
+// batchId links a frame back to its XML batch (null = individually loaded image)
 let frames = [];
 let packedXml = "";
 
-/* ---------------- LOAD IMAGES ---------------- */
+// batches: { id, label, frames[], srcImg|null }
+// A batch represents one loaded XML + optional linked PNG
+let batches = [];
+let nextBatchId = 1;
+
+const exportCanvas = document.createElement('canvas');
+const exportCtx    = exportCanvas.getContext('2d');
+
+const GROUP_COLORS = [
+  { stroke: "#534AB7", fill: "rgba(83,74,183,0.10)" },
+  { stroke: "#0F6E56", fill: "rgba(15,110,86,0.10)" },
+  { stroke: "#993C1D", fill: "rgba(153,60,29,0.10)" },
+  { stroke: "#185FA5", fill: "rgba(24,95,165,0.10)" },
+  { stroke: "#993556", fill: "rgba(153,53,86,0.10)" },
+  { stroke: "#3B6D11", fill: "rgba(59,109,17,0.10)" },
+  { stroke: "#854F0B", fill: "rgba(133,79,11,0.10)" },
+  { stroke: "#A32D2D", fill: "rgba(163,45,45,0.10)" },
+];
+
+/* ─────────────────────────────────────────────
+   LOAD INDIVIDUAL IMAGES
+───────────────────────────────────────────── */
 fileInput.addEventListener('change', e => loadFiles(e.target.files));
 
 function loadFiles(files) {
-  Array.from(files).forEach(file => {
-    if (!file.type.startsWith('image/')) return;
-
+  const eligible = Array.from(files).filter(f => f.type.startsWith('image/'));
+  let remaining = eligible.length;
+  if (!remaining) return;
+  eligible.forEach(file => {
     const reader = new FileReader();
     reader.onload = e => {
       const img = new Image();
       img.onload = () => {
-        frames.push({
-          name: file.name.replace(/\.[^.]+$/, ''),
-          img,
-          width: img.width,
-          height: img.height
-        });
-        updateList();
+        frames.push({ name: file.name.replace(/\.[^.]+$/, ''), srcImg: img, srcX: 0, srcY: 0, width: img.width, height: img.height, x: 0, y: 0, batchId: null });
+        if (--remaining === 0) updateList();
       };
       img.src = e.target.result;
     };
@@ -115,135 +235,468 @@ function loadFiles(files) {
   });
 }
 
-/* ---------------- LOAD XML (NEW) ---------------- */
+/* ─────────────────────────────────────────────
+   PARSE XML → frames array, return batch object
+───────────────────────────────────────────── */
+function parseXmlText(text, batchId) {
+  const parser = new DOMParser();
+  const xml = parser.parseFromString(text, "text/xml");
+  const nodes = xml.getElementsByTagName("SubTexture");
+  const parsed = [];
+  for (let node of nodes) {
+    const rotatedAttr = node.getAttribute("rotated");
+    const fx = parseInt(node.getAttribute("x"));
+    const fy = parseInt(node.getAttribute("y"));
+    parsed.push({
+      name:    node.getAttribute("name"),
+      srcImg:  null, srcX: 0, srcY: 0,
+      x: fx, y: fy,
+      origX: fx, origY: fy, // saved so pack is idempotent on re-pack
+      width:   parseInt(node.getAttribute("width")),
+      height:  parseInt(node.getAttribute("height")),
+      rotated: rotatedAttr === "true" || rotatedAttr === "1",
+      batchId,
+    });
+  }
+  return parsed;
+}
+
+/* ─────────────────────────────────────────────
+   LOAD XML (replaces everything, single-XML mode)
+───────────────────────────────────────────── */
 xmlInput.addEventListener('change', e => {
   const file = e.target.files[0];
   if (!file) return;
-
   const reader = new FileReader();
   reader.onload = ev => {
-    const parser = new DOMParser();
-    const xml = parser.parseFromString(ev.target.result, "text/xml");
-
-    const nodes = xml.getElementsByTagName("SubTexture");
-
-    frames = [];
-
-    for (let node of nodes) {
-      frames.push({
-        name: node.getAttribute("name"),
-        x: parseInt(node.getAttribute("x")),
-        y: parseInt(node.getAttribute("y")),
-        width: parseInt(node.getAttribute("width")),
-        height: parseInt(node.getAttribute("height")),
-        img: null // image not included in XML
-      });
-    }
-
+    // Clear existing batches and frames, start fresh with this one XML
+    batches = [];
+    const id = nextBatchId++;
+    const parsed = parseXmlText(ev.target.result, id);
+    const batch = { id, label: file.name, frames: parsed, srcImg: null };
+    batches.push(batch);
+    frames = [...parsed]; // replace all frames
     updateList();
-    alert("XML loaded! (Images not restored, only layout data)");
+    updateBatchPanel();
+    document.getElementById('addSpritesheetBtn').disabled = false;
+    xmlInput.value = "";
   };
-
   reader.readAsText(file);
 });
 
-/* ---------------- UI LIST ---------------- */
-function updateList() {
-  imageList.innerHTML = '';
+/* ─────────────────────────────────────────────
+   MIX XML — append frames from one or more XMLs
+───────────────────────────────────────────── */
+const mixXmlFile = document.getElementById('mixXmlFile');
+document.getElementById('mixXmlBtn').onclick = () => mixXmlFile.click();
 
-  frames.forEach((f, i) => {
-    const li = document.createElement('li');
-    li.textContent =
-      f.name +
-      (f.img ? " (image)" : " (xml-only)");
+mixXmlFile.addEventListener('change', e => {
+  const files = Array.from(e.target.files);
+  let remaining = files.length;
+  if (!remaining) return;
 
-    const btn = document.createElement('button');
-    btn.textContent = "Remove";
-    btn.onclick = () => {
-      frames.splice(i, 1);
-      updateList();
+  files.forEach(file => {
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const id = nextBatchId++;
+      const parsed = parseXmlText(ev.target.result, id);
+
+      // Collision check: resolve any frames that overlap existing packed positions
+      // We can't pack yet (user might not have packed), so just mark the batch.
+      const batch = { id, label: file.name, frames: parsed, srcImg: null };
+      batches.push(batch);
+      frames.push(...parsed);
+
+      if (--remaining === 0) {
+        updateList();
+        updateBatchPanel();
+        mixXmlFile.value = "";
+      }
     };
-
-    li.appendChild(btn);
-    imageList.appendChild(li);
+    reader.readAsText(file);
   });
+});
+
+/* ─────────────────────────────────────────────
+   BATCH PANEL
+───────────────────────────────────────────── */
+function updateBatchPanel() {
+  if (batches.length === 0) { batchBox.style.display = 'none'; return; }
+  batchBox.style.display = 'block';
+  const frag = document.createDocumentFragment();
+
+  batches.forEach(batch => {
+    const li = document.createElement('li');
+
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'batch-name';
+    nameSpan.textContent = batch.label;
+
+    const countSpan = document.createElement('span');
+    countSpan.className = 'batch-count';
+    countSpan.textContent = `${batch.frames.length} frames`;
+
+    const statusSpan = document.createElement('span');
+    statusSpan.className = 'batch-status ' + (batch.srcImg ? 'ok' : 'missing');
+    statusSpan.textContent = batch.srcImg ? '✓ PNG linked' : 'no PNG';
+
+    const linkBtn = document.createElement('button');
+    linkBtn.className = 'batch-link-btn';
+    linkBtn.textContent = batch.srcImg ? 'Re-link PNG' : 'Link PNG';
+    linkBtn.onclick = () => openLinkModal(batch);
+
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'batch-remove-btn';
+    removeBtn.textContent = 'Remove';
+    removeBtn.onclick = () => removeBatch(batch.id);
+
+    li.appendChild(nameSpan);
+    li.appendChild(countSpan);
+    li.appendChild(statusSpan);
+    li.appendChild(linkBtn);
+    li.appendChild(removeBtn);
+    frag.appendChild(li);
+  });
+
+  batchList.innerHTML = '';
+  batchList.appendChild(frag);
 }
 
-/* ---------------- PACK ---------------- */
+function removeBatch(id) {
+  batches = batches.filter(b => b.id !== id);
+  frames  = frames.filter(f => f.batchId !== id);
+  updateList();
+  updateBatchPanel();
+  if (batches.length === 0) document.getElementById('addSpritesheetBtn').disabled = true;
+}
+
+/* ─────────────────────────────────────────────
+   LINK PNG MODAL
+───────────────────────────────────────────── */
+let modalTargetBatch = null;
+const modalOverlay   = document.getElementById('modalOverlay');
+const modalImgPicker = document.getElementById('modalImgPicker');
+
+function openLinkModal(batch) {
+  modalTargetBatch = batch;
+  document.getElementById('modalTitle').textContent = 'Link PNG to: ' + batch.label;
+  document.getElementById('modalDesc').textContent =
+    `Choose the spritesheet PNG that matches this XML (${batch.frames.length} frames). The image pixels will be cropped per frame using the XML coordinates.`;
+  modalOverlay.classList.add('open');
+}
+
+document.getElementById('modalCancel').onclick = () => {
+  modalOverlay.classList.remove('open');
+  modalTargetBatch = null;
+};
+document.getElementById('modalPick').onclick = () => modalImgPicker.click();
+
+modalImgPicker.addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file || !modalTargetBatch) return;
+  const url = URL.createObjectURL(file);
+  const img = new Image();
+  img.onload = () => {
+    const batch = modalTargetBatch;
+    batch.srcImg = img;
+    batch.pngName = file.name.replace(/\.[^.]+$/, ''); // store filename without extension
+    // Apply to all frames in this batch — srcX/srcY use origX/origY (original XML coords in source PNG)
+    batch.frames.forEach(f => {
+      f.srcImg = img;
+      f.srcX   = f.origX ?? f.x;
+      f.srcY   = f.origY ?? f.y;
+    });
+    // Also update the master frames array
+    frames.forEach(f => {
+      if (f.batchId === batch.id) {
+        f.srcImg = img;
+        f.srcX   = f.origX ?? f.x;
+        f.srcY   = f.origY ?? f.y;
+      }
+    });
+    updateList();
+    updateBatchPanel();
+    modalOverlay.classList.remove('open');
+    modalTargetBatch = null;
+    modalImgPicker.value = "";
+  };
+  img.src = url;
+});
+
+/* ─────────────────────────────────────────────
+   ADD SPRITESHEET (legacy single-XML flow)
+───────────────────────────────────────────── */
+const addSpritesheetImg = document.getElementById('addSpritesheetImg');
+document.getElementById('addSpritesheetBtn').onclick = () => {
+  // If there's exactly one batch, link directly. Otherwise open the modal for first unlinked.
+  const unlinked = batches.filter(b => !b.srcImg);
+  if (unlinked.length === 1) { openLinkModal(unlinked[0]); }
+  else if (batches.length === 1) { openLinkModal(batches[0]); }
+  else if (unlinked.length > 1) { openLinkModal(unlinked[0]); }
+  else { addSpritesheetImg.click(); } // no batches — individual frame load
+};
+
+/* ─────────────────────────────────────────────
+   UI LIST
+───────────────────────────────────────────── */
+function updateList() {
+  document.getElementById('frameCount').textContent = frames.length;
+  const frag = document.createDocumentFragment();
+  frames.forEach((f, i) => {
+    const li = document.createElement('li');
+    const name = document.createElement('span');
+    name.textContent = f.name + (f.srcImg ? '' : ' [no image]');
+    if (!f.srcImg) name.style.color = '#b45309';
+    const btn = document.createElement('button');
+    btn.textContent = 'Remove';
+    btn.onclick = () => { frames.splice(i, 1); updateList(); };
+    li.appendChild(name); li.appendChild(btn);
+    frag.appendChild(li);
+  });
+  imageList.innerHTML = '';
+  imageList.appendChild(frag);
+}
+
+/* ─────────────────────────────────────────────
+   PLACE BATCHES
+   Each batch keeps its original internal layout exactly.
+   Batches are placed one by one: batch 0 stays at origin,
+   each subsequent batch is offset so it sits clear of
+   everything placed so far. Only x/y are touched.
+───────────────────────────────────────────── */
+function placeBatches(frameList, padding) {
+  if (!frameList.length) return { w: 0, h: 0 };
+
+  // Group frames by batchId (null = individual images, treat as one group)
+  const batchGroups = new Map();
+  frameList.forEach(f => {
+    const key = f.batchId ?? '__individual__';
+    if (!batchGroups.has(key)) batchGroups.set(key, []);
+    batchGroups.get(key).push(f);
+  });
+
+  // Helper: bounding box of a set of frames
+  function bbox(fs) {
+    let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+    fs.forEach(f => { x1 = Math.min(x1, f.x); y1 = Math.min(y1, f.y); x2 = Math.max(x2, f.x + f.width); y2 = Math.max(y2, f.y + f.height); });
+    return { x1, y1, x2, y2, w: x2 - x1, h: y2 - y1 };
+  }
+
+  // Track occupied area as placed bounding boxes
+  const placed = []; // { x1, y1, x2, y2 }
+
+  batchGroups.forEach((bFrames, key) => {
+    // Normalize: shift batch so its own top-left starts at 0,0
+    const b = bbox(bFrames);
+    const normOffX = -b.x1;
+    const normOffY = -b.y1;
+
+    if (placed.length === 0) {
+      // First batch: place at padding,padding
+      bFrames.forEach(f => { f.x += normOffX + padding; f.y += normOffY + padding; });
+      placed.push(bbox(bFrames));
+      return;
+    }
+
+    // Find the right edge of everything placed so far
+    const rightEdge = Math.max(...placed.map(p => p.x2));
+
+    // Place this batch to the right of everything, aligned to top
+    const offsetX = normOffX + rightEdge + padding;
+    const offsetY = normOffY + padding;
+    bFrames.forEach(f => { f.x += offsetX; f.y += offsetY; });
+    placed.push(bbox(bFrames));
+  });
+
+  const allX2 = Math.max(...frameList.map(f => f.x + f.width)) + padding;
+  const allY2 = Math.max(...frameList.map(f => f.y + f.height)) + padding;
+  return { w: allX2, h: allY2 };
+}
+
+/* ─────────────────────────────────────────────
+   DETECT ANIMATION GROUPS
+───────────────────────────────────────────── */
+function detectGroups(frameList) {
+  const groups = {};
+  frameList.forEach(f => {
+    const m = f.name.match(/^(.+?)[\s_\-]?\d+$/);
+    const key = m ? m[1] : f.name;
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(f);
+  });
+  return groups;
+}
+
+/* ─────────────────────────────────────────────
+   DRAW OVERLAYS
+───────────────────────────────────────────── */
+function drawOverlays(oc) {
+  const groups = detectGroups(frames);
+  const keys = Object.keys(groups);
+  const frag = document.createDocumentFragment();
+  let colorIdx = 0;
+
+  keys.forEach(key => {
+    const members = groups[key];
+    if (!members.length) return;
+    const col = GROUP_COLORS[colorIdx++ % GROUP_COLORS.length];
+
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    members.forEach(f => {
+      minX = Math.min(minX, f.x); minY = Math.min(minY, f.y);
+      maxX = Math.max(maxX, f.x + f.width); maxY = Math.max(maxY, f.y + f.height);
+    });
+
+    const pad = 2;
+    oc.strokeStyle = col.stroke; oc.lineWidth = 1.5; oc.fillStyle = col.fill;
+    oc.beginPath();
+    oc.roundRect(minX - pad, minY - pad, maxX - minX + pad * 2, maxY - minY + pad * 2, 3);
+    oc.fill(); oc.stroke();
+
+    oc.fillStyle = col.stroke;
+    oc.font = "bold 9px Arial, sans-serif";
+    const labelY = minY - pad - 2 < 8 ? minY + 10 : minY - pad - 2;
+    oc.fillText(key, minX - pad + 3, labelY);
+
+    const item = document.createElement('div');
+    item.className = 'legend-item';
+    const swatch = document.createElement('div');
+    swatch.className = 'legend-swatch';
+    swatch.style.borderColor = col.stroke;
+    swatch.style.background = col.fill;
+    const lbl = document.createElement('span');
+    lbl.textContent = `${key} (${members.length})`;
+    item.appendChild(swatch); item.appendChild(lbl);
+    frag.appendChild(item);
+  });
+
+  legend.innerHTML = ''; legend.appendChild(frag);
+}
+
+/* ─────────────────────────────────────────────
+   PACK
+───────────────────────────────────────────── */
 document.getElementById('packBtn').onclick = () => {
   if (!frames.length) return;
 
-  const padding = +document.getElementById('padding').value || 0;
+  const padding   = +document.getElementById('padding').value || 0;
   const sheetName = document.getElementById('sheetName').value || "spritesheet";
 
-  const cols = Math.ceil(Math.sqrt(frames.length));
-  const cellW = Math.max(...frames.map(f => f.width));
-  const cellH = Math.max(...frames.map(f => f.height));
-
-  const w = cols * (cellW + padding) + padding;
-  const rows = Math.ceil(frames.length / cols);
-  const h = rows * (cellH + padding) + padding;
-
-  previewCanvas.width = w;
-  previewCanvas.height = h;
-
-  const ctx = previewCanvas.getContext("2d");
-  ctx.clearRect(0,0,w,h);
-
-  const xml = [`<TextureAtlas imagePath="${sheetName}.png">`];
-
-  frames.forEach((f, i) => {
-    const x = padding + (i % cols) * (cellW + padding);
-    const y = padding + Math.floor(i / cols) * (cellH + padding);
-
-    if (f.img) ctx.drawImage(f.img, x, y);
-
-    xml.push(
-      `<SubTexture name="${f.name}" x="${x}" y="${y}" width="${f.width}" height="${f.height}"/>`
-    );
+  // Reset x/y to original XML values before placing, so re-packing is idempotent
+  frames.forEach(f => {
+    if (f.origX !== undefined) { f.x = f.origX; f.y = f.origY; }
   });
 
-  xml.push("</TextureAtlas>");
+  // placeBatches shifts each batch's x/y as a block — internal layout unchanged
+  const { w, h } = placeBatches(frames, padding);
 
-  packedXml = xml.join("\n");
+  previewCanvas.width  = w; previewCanvas.height  = h;
+  overlayCanvas.width  = w; overlayCanvas.height  = h;
+
+  const ctx = previewCanvas.getContext("2d");
+  ctx.clearRect(0, 0, w, h);
+  const oc = overlayCanvas.getContext("2d");
+  oc.clearRect(0, 0, w, h);
+
+  // Determine imagePath: use linked PNG name if single batch, else sheetName
+  let imagePath = sheetName;
+  if (batches.length === 1 && batches[0].pngName) imagePath = batches[0].pngName;
+
+  const xmlLines = [
+    `<TextureAtlas imagePath="${imagePath}.png">`,
+    `  <!-- Made with https://bingnut.github.io/FNF-xml-generator/ -->`,
+  ];
+
+  frames.forEach(f => {
+    if (f.srcImg) {
+      // srcX/srcY always point into the original source PNG — never change
+      ctx.drawImage(f.srcImg, f.srcX, f.srcY, f.width, f.height, f.x, f.y, f.width, f.height);
+    }
+    const rotatedAttr = f.rotated ? ` rotated="true"` : '';
+    xmlLines.push(`  <SubTexture name="${f.name}" x="${f.x}" y="${f.y}" width="${f.width}" height="${f.height}"${rotatedAttr}/>`);
+  });
+
+  xmlLines.push("</TextureAtlas>");
+  packedXml = xmlLines.join("\n");
   xmlPreview.textContent = packedXml;
 
-  document.getElementById('downloadPngBtn').disabled = false;
-  document.getElementById('downloadXmlBtn').disabled = false;
-  document.getElementById('downloadBothBtn').disabled = false;
+  drawOverlays(oc);
+  document.getElementById('downloadToggle').disabled = false;
 };
 
-/* ---------------- DOWNLOADS ---------------- */
+/* ─────────────────────────────────────────────
+   DROPDOWN
+───────────────────────────────────────────── */
+const downloadToggle = document.getElementById('downloadToggle');
+const downloadMenu   = document.getElementById('downloadMenu');
+downloadToggle.addEventListener('click', () => downloadMenu.classList.toggle('open'));
+document.addEventListener('click', e => {
+  if (!e.target.closest('.dropdown-wrap')) downloadMenu.classList.remove('open');
+});
+
+/* ─────────────────────────────────────────────
+   DOWNLOADS
+───────────────────────────────────────────── */
 document.getElementById('downloadPngBtn').onclick = () => {
   const name = document.getElementById('sheetName').value || "spritesheet";
   const a = document.createElement("a");
-  a.download = name + ".png";
-  a.href = previewCanvas.toDataURL();
-  a.click();
+  a.download = name + ".png"; a.href = previewCanvas.toDataURL(); a.click();
+  downloadMenu.classList.remove('open');
 };
 
 document.getElementById('downloadXmlBtn').onclick = () => {
   const name = document.getElementById('sheetName').value || "spritesheet";
   const blob = new Blob([packedXml], { type: "text/xml" });
-
   const a = document.createElement("a");
-  a.download = name + ".xml";
-  a.href = URL.createObjectURL(blob);
-  a.click();
+  a.download = name + ".xml"; a.href = URL.createObjectURL(blob); a.click();
+  downloadMenu.classList.remove('open');
 };
 
-/* ---------------- CLEAR ---------------- */
-document.getElementById('clearBtn').onclick = () => {
-  frames = [];
-  packedXml = "";
-  updateList();
-  xmlPreview.textContent = "";
-  previewCanvas.getContext("2d").clearRect(0,0,previewCanvas.width,previewCanvas.height);
+document.getElementById('downloadBothBtn').onclick = async () => {
+  const name = document.getElementById('sheetName').value || "spritesheet";
+  const zip = new JSZip();
+  zip.file(name + ".png", previewCanvas.toDataURL().split(',')[1], { base64: true });
+  zip.file(name + ".xml", packedXml);
+  const blob = await zip.generateAsync({ type: "blob" });
+  const a = document.createElement("a");
+  a.download = name + ".zip"; a.href = URL.createObjectURL(blob); a.click();
+  downloadMenu.classList.remove('open');
+};
 
-  fileInput.value = "";
-  xmlInput.value = "";
+document.getElementById('downloadFramesBtn').onclick = async () => {
+  const name = document.getElementById('sheetName').value || "spritesheet";
+  const zip = new JSZip();
+  const folder = zip.folder(name + "_frames");
+  frames.forEach(f => {
+    exportCanvas.width  = f.width;
+    exportCanvas.height = f.height;
+    exportCtx.clearRect(0, 0, f.width, f.height);
+    if (f.srcImg) {
+      exportCtx.drawImage(f.srcImg, f.srcX, f.srcY, f.width, f.height, 0, 0, f.width, f.height);
+    } else {
+      exportCtx.drawImage(previewCanvas, f.x, f.y, f.width, f.height, 0, 0, f.width, f.height);
+    }
+    folder.file(f.name + ".png", exportCanvas.toDataURL("image/png").split(',')[1], { base64: true });
+  });
+  const blob = await zip.generateAsync({ type: "blob" });
+  const a = document.createElement("a");
+  a.download = name + "_frames.zip"; a.href = URL.createObjectURL(blob); a.click();
+  downloadMenu.classList.remove('open');
+};
+
+/* ─────────────────────────────────────────────
+   CLEAR
+───────────────────────────────────────────── */
+document.getElementById('clearBtn').onclick = () => {
+  frames = []; batches = []; packedXml = "";
+  updateList(); updateBatchPanel();
+  xmlPreview.textContent = "";
+  legend.innerHTML = "";
+  previewCanvas.getContext("2d").clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+  overlayCanvas.getContext("2d").clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+  fileInput.value = ""; xmlInput.value = "";
+  ['downloadToggle', 'addSpritesheetBtn'].forEach(id => document.getElementById(id).disabled = true);
 };
 </script>
-
 </body>
 </html>
